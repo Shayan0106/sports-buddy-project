@@ -63,7 +63,7 @@ Inside the src folder, create a new folder named config.
 
 Inside this new src/config folder, create a file named firebase.js.
 
-Open the newly created firebase.js file and paste the entire code block I have provided below into it.
+Open the newly created firebase.js file and paste the API you are getting from your own firebase console after creating your own one in the firebase.
 
 [Paste the entire firebase.js code block that you are sending them here]
 After creating and saving the file with the code, you can proceed to run the project from your terminal using the npm run dev command. It should now connect to Firebase successfully.
