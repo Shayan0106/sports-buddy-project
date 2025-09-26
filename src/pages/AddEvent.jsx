@@ -1,47 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { db } from '../config/firebase';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { AuthContext } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { db, storage } from '../config/firebase'; // Import storage
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Import storage functions
-
-// Reusable SelectField and InputField components (remain the same)
-const SelectField = ({ label, name, value, onChange, options, required = false }) => (
-  <div>
-    <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
-    <select
-      id={name}
-      name={name}
-      value={value}
-      onChange={onChange}
-      required={required}
-      className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-    >
-      <option value="" disabled>Select {label}</option>
-      {options.map(option => (
-        <option key={option.id} value={option.name}>{option.name}</option>
-      ))}
-    </select>
-  </div>
-);
-
-const InputField = ({ label, name, type = 'text', value, onChange, required = false }) => (
-  <div>
-    <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
-    <input
-      id={name}
-      name={name}
-      type={type}
-      value={value}
-      onChange={onChange}
-      required={required}
-      className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-    />
-  </div>
-);
 
 const AddEvent = () => {
-  const [eventData, setEventData] = useState({
+  const { currentUser } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  const [eventDetails, setEventDetails] = useState({
     title: '',
     sport: '',
     city: '',
@@ -49,121 +16,132 @@ const AddEvent = () => {
     dateTime: '',
   });
 
-  const [imageUpload, setImageUpload] = useState(null); // New state for image file
-  const [imageUrl, setImageUrl] = useState(''); // New state for uploaded image URL
-
-  // State for dropdown options (remain the same)
-  const [categories, setCategories] = useState([]);
+  const [sports, setSports] = useState([]);
   const [cities, setCities] = useState([]);
   const [areas, setAreas] = useState([]);
-  
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { currentUser } = useAuth();
-  const navigate = useNavigate();
 
-  // Fetch data for dropdowns (remains the same)
+  // Fetch initial data for Sports and Cities dropdowns when the component loads
   useEffect(() => {
-    const fetchData = async (collectionName, setState) => {
-      const collectionRef = collection(db, collectionName);
-      const q = query(collectionRef, orderBy('name'));
-      const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setState(data);
+    const fetchDataForDropdowns = async (collectionName, setState) => {
+      try {
+        const querySnapshot = await getDocs(collection(db, collectionName));
+        const data = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setState(data);
+      } catch (err) {
+        console.error("Error fetching dropdown data:", err);
+        setError(`Failed to load ${collectionName}.`);
+      }
     };
 
-    fetchData('categories', setCategories);
-    fetchData('cities', setCities);
-    fetchData('areas', setAreas);
+    fetchDataForDropdowns('categories', setSports);
+    fetchDataForDropdowns('cities', setCities);
   }, []);
+
+  // This special hook runs ONLY when the user selects a different city
+  useEffect(() => {
+    const fetchAreasForCity = async () => {
+      // Don't run if no city is selected
+      if (!eventDetails.city) {
+        setAreas([]); // Clear areas if city is unselected
+        return;
+      }
+      
+      try {
+        setAreas([]); // Clear old areas while loading new ones
+        const areasQuery = query(collection(db, "areas"), where("cityName", "==", eventDetails.city));
+        const querySnapshot = await getDocs(areasQuery);
+        const cityAreas = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setAreas(cityAreas);
+      } catch (err) {
+        console.error("Error fetching areas:", err);
+        setError('Failed to load areas for the selected city.');
+      }
+    };
+
+    fetchAreasForCity();
+  }, [eventDetails.city]); // The key part: this code depends on the city
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setEventData((prevData) => ({
-      ...prevData,
-      [name]: value,
-    }));
-  };
-
-  const handleImageChange = (e) => {
-    if (e.target.files[0]) {
-      setImageUpload(e.target.files[0]);
+    
+    // If the user changes the city, we must reset the selected area
+    if (name === 'city') {
+        setEventDetails(prev => ({ ...prev, city: value, area: '' }));
+    } else {
+        setEventDetails(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(''); // Clear previous errors
+
     if (!currentUser) {
-      setError('You must be logged in to create an event.');
+      setError("Please log in to create an event.");
       return;
     }
-    setLoading(true);
-    setError('');
-
-    let uploadedImageUrl = '';
-    // --- Image Upload Logic ---
-    if (imageUpload) {
-      try {
-        const imageRef = ref(storage, `event_images/${imageUpload.name + Date.now()}`); // Unique file name
-        await uploadBytes(imageRef, imageUpload);
-        uploadedImageUrl = await getDownloadURL(imageRef);
-        setImageUrl(uploadedImageUrl); // Set URL in state if needed elsewhere
-      } catch (uploadError) {
-        console.error("Error uploading image:", uploadError);
-        setError("Failed to upload image. Please try again.");
-        setLoading(false);
-        return;
-      }
-    }
-    // --- End Image Upload Logic ---
+    setIsLoading(true);
 
     try {
+      // Add event data to Firestore
       await addDoc(collection(db, 'events'), {
-        ...eventData,
-        imageUrl: uploadedImageUrl, // Save the image URL
+        ...eventDetails,
         createdBy: currentUser.uid,
         creatorEmail: currentUser.email,
-        createdAt: serverTimestamp(),
+        createdAt: new Date(),
       });
-      navigate('/');
+
+      setIsLoading(false);
+      alert('Event created successfully!');
+      navigate('/'); // Redirect to homepage after success
     } catch (err) {
-      console.error('Error adding document: ', err);
-      setError('Failed to create event. Please try again.');
-    } finally {
-      setLoading(false);
+      setIsLoading(false);
+      console.error("Error creating event: ", err);
+      setError("Failed to create event. Please try again.");
     }
   };
 
   return (
-    <div className="flex justify-center p-4 sm:p-8">
-      <div className="w-full max-w-2xl p-8 space-y-6 bg-white rounded-lg shadow-md mt-10">
-        <h2 className="text-2xl font-bold text-center text-gray-900">
-          Create a New Sports Event
-        </h2>
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+      <div className="w-full max-w-lg p-8 space-y-8 bg-white rounded-lg shadow-xl">
+        <h2 className="text-3xl font-bold text-center text-gray-900">Create a New Sports Event</h2>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <InputField label="Event Title" name="title" value={eventData.title} onChange={handleChange} required />
           
-          <SelectField label="Sport" name="sport" value={eventData.sport} onChange={handleChange} options={categories} required />
-          <SelectField label="City" name="city" value={eventData.city} onChange={handleChange} options={cities} required />
-          <SelectField label="Area" name="area" value={eventData.area} onChange={handleChange} options={areas} required />
-
-          <InputField label="Date and Time" name="dateTime" type="datetime-local" value={eventData.dateTime} onChange={handleChange} required />
-          
-          {/* New Image Upload Field */}
+          {/* Event Title Input */}
           <div>
-            <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700">Event Image</label>
-            <input
-              type="file"
-              id="imageUpload"
-              className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              onChange={handleImageChange}
-            />
+            <label htmlFor="title" className="sr-only">Event Title</label>
+            <input id="title" type="text" name="title" placeholder="Event Title" value={eventDetails.title} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500"/>
           </div>
 
-          {error && <p className="text-sm text-center text-red-600">{error}</p>}
+          {/* Sport Dropdown */}
+          <select name="sport" value={eventDetails.sport} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500">
+            <option value="">Select Sport</option>
+            {sports.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+          </select>
+
+          {/* City Dropdown */}
+          <select name="city" value={eventDetails.city} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500">
+            <option value="">Select City</option>
+            {cities.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
+
+          {/* Area Dropdown (Dependent on City) */}
+          <select name="area" value={eventDetails.area} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-md disabled:bg-gray-200 focus:ring-2 focus:ring-indigo-500" disabled={!eventDetails.city || areas.length === 0}>
+            <option value="">{eventDetails.city ? 'Select Area' : 'Select a City first'}</option>
+            {areas.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+          </select>
+
+          {/* Date and Time Input */}
+          <input type="datetime-local" name="dateTime" value={eventDetails.dateTime} onChange={handleChange} required className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500" />
           
-          <button type="submit" disabled={loading} className="w-full px-4 py-2 font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300">
-            {loading ? 'Creating...' : 'Create Event'}
+          {/* Error Message Display */}
+          {error && <p className="text-sm text-center text-red-600">{error}</p>}
+
+          {/* Submit Button */}
+          <button type="submit" disabled={isLoading} className="w-full p-3 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-gray-400 font-semibold">
+            {isLoading ? 'Creating...' : 'Create Event'}
           </button>
         </form>
       </div>
