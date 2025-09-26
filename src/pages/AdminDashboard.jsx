@@ -1,58 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, orderBy, query } from 'firebase/firestore';
-
-// A reusable component for our management sections
-const ManagementSection = ({ title, items, onAddItem, onDeleteItem, newItem, setNewItem, placeholder }) => (
-  <div className="bg-white p-6 rounded-lg shadow-md">
-    <h2 className="text-xl font-semibold mb-4">{title}</h2>
-    <form onSubmit={onAddItem} className="flex gap-4 mb-6">
-      <input
-        type="text"
-        value={newItem}
-        onChange={(e) => setNewItem(e.target.value)}
-        placeholder={placeholder}
-        className="flex-grow px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
-        Add
-      </button>
-    </form>
-    <div className="space-y-2">
-      {items.map(item => (
-        <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
-          <span>{item.name}</span>
-          <button onClick={() => onDeleteItem(item.id)} className="px-3 py-1 text-xs text-white bg-red-500 rounded-md hover:bg-red-600">
-            Delete
-          </button>
-        </div>
-      ))}
-    </div>
-  </div>
-);
+import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 const AdminDashboard = () => {
-  // State for categories, cities, and areas
+  const [newCategory, setNewCategory] = useState('');
+  const [newCity, setNewCity] = useState('');
+  const [newArea, setNewArea] = useState('');
+  const [selectedCityForArea, setSelectedCityForArea] = useState('');
+
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
   const [areas, setAreas] = useState([]);
 
-  // State for new item inputs
-  const [newCategory, setNewCategory] = useState('');
-  const [newCity, setNewCity] = useState('');
-  const [newArea, setNewArea] = useState('');
-
-  const [loading, setLoading] = useState(false);
-
-  // Generic fetch function
   const fetchData = async (collectionName, setState) => {
-    setLoading(true);
-    const collectionRef = collection(db, collectionName);
-    const q = query(collectionRef, orderBy('name'));
-    const querySnapshot = await getDocs(q);
-    const fetchedData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setState(fetchedData);
-    setLoading(false);
+    try {
+      const querySnapshot = await getDocs(collection(db, collectionName));
+      const data = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      setState(data);
+    } catch (error) {
+      console.error(`Error fetching ${collectionName}: `, error);
+    }
   };
 
   useEffect(() => {
@@ -61,64 +28,116 @@ const AdminDashboard = () => {
     fetchData('areas', setAreas);
   }, []);
 
-  // Generic add item function
-  const handleAddItem = async (collectionName, itemName, setItemName, refetch) => {
-    if (itemName.trim() === '') return;
+  const handleAdd = async (collectionName, value, resetState, additionalData = {}) => {
+    if (!value || (collectionName === 'areas' && !selectedCityForArea)) {
+      alert(`Please fill out all fields.`);
+      return;
+    }
     try {
-      await addDoc(collection(db, collectionName), { name: itemName.trim() });
-      setItemName('');
-      refetch();
+      await addDoc(collection(db, collectionName), { name: value, ...additionalData });
+      resetState('');
+      fetchData(collectionName, eval(`set${collectionName.charAt(0).toUpperCase() + collectionName.slice(1)}`));
+       if (collectionName === 'areas') setSelectedCityForArea('');
     } catch (error) {
       console.error(`Error adding to ${collectionName}: `, error);
     }
   };
 
-  // Generic delete item function
-  const handleDeleteItem = async (collectionName, itemId, refetch) => {
-    if (window.confirm(`Are you sure you want to delete this item?`)) {
-      try {
-        await deleteDoc(doc(db, collectionName, itemId));
-        refetch();
-      } catch (error) {
-        console.error(`Error deleting from ${collectionName}: `, error);
-      }
+  const handleDelete = async (collectionName, id) => {
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      fetchData(collectionName, eval(`set${collectionName.charAt(0).toUpperCase() + collectionName.slice(1)}`));
+    } catch (error) {
+      console.error(`Error deleting from ${collectionName}: `, error);
     }
   };
 
   return (
-    <div className="container mx-auto p-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Admin Dashboard</h1>
-      
-      {loading && <p>Loading data...</p>}
+    <div className="container mx-auto p-8 bg-gray-50 min-h-screen">
+      <h1 className="text-4xl font-bold mb-8 text-center text-gray-800">Admin Dashboard</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ManagementSection
-          title="Manage Sports Categories"
-          items={categories}
-          onAddItem={(e) => { e.preventDefault(); handleAddItem('categories', newCategory, setNewCategory, () => fetchData('categories', setCategories)); }}
-          onDeleteItem={(id) => handleDeleteItem('categories', id, () => fetchData('categories', setCategories))}
-          newItem={newCategory}
-          setNewItem={setNewCategory}
-          placeholder="New category name"
-        />
-        <ManagementSection
-          title="Manage Cities"
-          items={cities}
-          onAddItem={(e) => { e.preventDefault(); handleAddItem('cities', newCity, setNewCity, () => fetchData('cities', setCities)); }}
-          onDeleteItem={(id) => handleDeleteItem('cities', id, () => fetchData('cities', setCities))}
-          newItem={newCity}
-          setNewItem={setNewCity}
-          placeholder="New city name"
-        />
-        <ManagementSection
-          title="Manage Areas"
-          items={areas}
-          onAddItem={(e) => { e.preventDefault(); handleAddItem('areas', newArea, setNewArea, () => fetchData('areas', setAreas)); }}
-          onDeleteItem={(id) => handleDeleteItem('areas', id, () => fetchData('areas', setAreas))}
-          newItem={newArea}
-          setNewItem={setNewArea}
-          placeholder="New area name"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Manage Sports Categories */}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-700">Manage Sports Categories</h2>
+          <div className="flex">
+            <input
+              type="text"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              placeholder="New category name"
+              className="flex-grow p-2 border border-gray-300 rounded-l-md focus:ring-2 focus:ring-indigo-500"
+            />
+            <button onClick={() => handleAdd('categories', newCategory, setNewCategory)} className="bg-indigo-600 text-white px-4 py-2 rounded-r-md hover:bg-indigo-700">Add</button>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {categories.map(cat => (
+              <li key={cat.id} className="flex justify-between items-center p-2 border-b">{cat.name} <button onClick={() => handleDelete('categories', cat.id)} className="text-red-500 hover:text-red-700 font-semibold">Delete</button></li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Manage Cities */}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-700">Manage Cities</h2>
+          <div className="flex">
+            <input
+              type="text"
+              value={newCity}
+              onChange={(e) => setNewCity(e.target.value)}
+              placeholder="New city name"
+              className="flex-grow p-2 border border-gray-300 rounded-l-md focus:ring-2 focus:ring-indigo-500"
+            />
+            <button onClick={() => handleAdd('cities', newCity, setNewCity)} className="bg-indigo-600 text-white px-4 py-2 rounded-r-md hover:bg-indigo-700">Add</button>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {cities.map(city => (
+              <li key={city.id} className="flex justify-between items-center p-2 border-b">{city.name} <button onClick={() => handleDelete('cities', city.id)} className="text-red-500 hover:text-red-700 font-semibold">Delete</button></li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Manage Areas (with city dropdown) */}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-700">Manage Areas</h2>
+          <div className="space-y-4">
+             <select
+              value={selectedCityForArea}
+              onChange={(e) => setSelectedCityForArea(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select a City first</option>
+              {cities.map(city => (
+                <option key={city.id} value={city.name}>{city.name}</option>
+              ))}
+            </select>
+            <div className="flex">
+              <input
+                type="text"
+                value={newArea}
+                onChange={(e) => setNewArea(e.target.value)}
+                placeholder="New area name"
+                className="flex-grow p-2 border border-gray-300 rounded-l-md focus:ring-2 focus:ring-indigo-500"
+                disabled={!selectedCityForArea}
+              />
+              <button
+                onClick={() => handleAdd('areas', newArea, setNewArea, { cityName: selectedCityForArea })}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-r-md hover:bg-indigo-700 disabled:bg-gray-400"
+                disabled={!selectedCityForArea}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+           <ul className="mt-4 space-y-2">
+            {areas.map(area => (
+              <li key={area.id} className="flex justify-between items-center p-2 border-b">
+                <span>{area.name} <span className="text-gray-500 text-sm">({area.cityName})</span></span>
+                <button onClick={() => handleDelete('areas', area.id)} className="text-red-500 hover:text-red-700 font-semibold">Delete</button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );
