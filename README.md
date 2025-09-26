@@ -52,8 +52,23 @@ To run this project locally, follow these steps:
     - Copy your `firebaseConfig` object from your Firebase project settings.
     - In the project, create a file at `src/config/firebase.js`.
     - Paste your `firebaseConfig` object into it and export the initialized services. **(Important: This file is in `.gitignore` and should not be committed with your keys).**
+  
+4.  To connect the "SPORTS_BUDDY" application to its backend services, you will need to add a Firebase configuration file. This file contains the necessary API keys and is not included in the main repository for security reasons.
 
-4.  **Run the application:**
+Please follow these steps carefully:
+
+Navigate to the project's root directory (e.g., sports-buddy-project-main).
+
+Inside the src folder, create a new folder named config.
+
+Inside this new src/config folder, create a file named firebase.js.
+
+Open the newly created firebase.js file and paste the API you are getting from your own firebase console after creating your own one in the firebase.
+
+[Paste the entire firebase.js code block that you are sending them here]
+After creating and saving the file with the code, you can proceed to run the project from your terminal using the npm run dev command. It should now connect to Firebase successfully.
+
+5.  **Run the application:**
     `bash
     npm run dev
     `
