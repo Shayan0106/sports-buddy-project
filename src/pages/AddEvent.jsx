@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { db } from '../config/firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
-import { useAuth } from '../context/AuthContext';
+import { AuthContext, useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 const AddEvent = () => {
-  const { currentUser } = useAuth(AuthContext);
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   const [eventDetails, setEventDetails] = useState({
